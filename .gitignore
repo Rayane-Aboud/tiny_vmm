@@ -1,2 +1,6 @@
 /target
 linux
+
+# Guest images: built locally, see README
+kernel.bin
+*.cpio
