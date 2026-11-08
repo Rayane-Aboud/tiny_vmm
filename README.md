@@ -1,35 +1,38 @@
 # tiny_vmm
 
-**A minimal virtual machine monitor in Rust on top of Linux KVM, written to understand what Firecracker and
-QEMU do under the hood.** About 600 lines.
+tiny_vmm is a small virtual machine monitor written in Rust on top of Linux KVM. I wrote it to understand
+what tools like Firecracker and QEMU do when they start a virtual machine. It's about 600 lines.
 
 ## What it does
 
-1. **Creates a VM and a vCPU** through `/dev/kvm` ([kvm-ioctls](https://github.com/rust-vmm/kvm-ioctls)) and maps
-   64 MiB of guest memory ([vm-memory](https://github.com/rust-vmm/vm-memory)).
-2. **Follows the Linux x86 boot protocol by hand**: loads a `bzImage` at 1 MiB, reads `setup_sects` from its
-   header to find the 32-bit entry point, writes the "zero page" boot parameters (`HdrS` signature, initrd
-   address and size) and the kernel command line (`console=ttyS0 ...`), and loads an initramfs at 8 MiB.
-3. **Sets the vCPU state directly**: protected mode with paging bit set in `CR0`, flat 4 GiB code and data
-   segments, `RIP` at the kernel entry, `RDI` pointing to the boot parameters.
-4. **Runs the vCPU loop** and handles VM exits: port I/O, MMIO, `HLT`, shutdown.
-5. **Emulates a 16550 serial port** at `0x3F8`, so the guest's console output shows up in the terminal.
-6. **Builds its own initramfs**: unpacks a base `initramfs.cpio`, adds a statically linked test binary and an
-   `init` script, and repacks it as `initramfs_custom.cpio`.
+1. It creates a virtual machine and a virtual CPU through `/dev/kvm`, using
+   [kvm-ioctls](https://github.com/rust-vmm/kvm-ioctls), and gives the guest 64 MiB of memory with
+   [vm-memory](https://github.com/rust-vmm/vm-memory).
+2. It follows the Linux boot protocol by hand. It loads a `bzImage` at 1 MiB, reads its header to find
+   where the 32-bit code starts, writes the boot parameters (the "zero page") and the kernel command line,
+   and loads an initramfs at 8 MiB.
+3. It sets the CPU registers directly: protected mode, flat 4 GiB segments, the instruction pointer on the
+   kernel entry point, and a pointer to the boot parameters.
+4. It runs the virtual CPU in a loop and handles each exit: port I/O, memory-mapped I/O, `HLT` and
+   shutdown.
+5. It emulates a serial port at `0x3F8`, so the guest's console output shows up in your terminal.
+6. It can build its own initramfs: it unpacks a base `initramfs.cpio`, adds a small test program and an
+   `init` script, and packs it again as `initramfs_custom.cpio`.
 
-| File | Role |
+| File | What it does |
 |---|---|
-| `src/vm/mod.rs` | VM lifecycle: create, load images, boot |
-| `src/vm/memory.rs` | guest memory, boot parameters, command line |
-| `src/vm/vcpu.rs` | registers, run loop, VM exit handling |
-| `src/io/mod.rs` | serial port emulation |
-| `src/vm/initramfs.rs` | custom initramfs builder |
+| `src/vm/mod.rs` | the life of the VM: create it, load the images, boot |
+| `src/vm/memory.rs` | guest memory, boot parameters and command line |
+| `src/vm/vcpu.rs` | registers, the run loop and the VM exits |
+| `src/io/mod.rs` | the serial port |
+| `src/vm/initramfs.rs` | building the custom initramfs |
 
-## Run it
+## Running it
 
-Needs Linux with KVM (`/dev/kvm` readable by your user), Rust, `gcc` and `cpio`.
+You need Linux with KVM (`/dev/kvm` must be readable by your user), Rust, `gcc` and `cpio`.
 
-The guest images are not committed. Build a kernel and put it next to `Cargo.toml` as `kernel.bin`:
+The kernel and initramfs images are not in the repository. Build a kernel and put it next to
+`Cargo.toml` as `kernel.bin`:
 
 ```bash
 git clone --depth 1 https://github.com/torvalds/linux && cd linux
@@ -37,7 +40,7 @@ make x86_64_defconfig && make -j"$(nproc)" bzImage
 cp arch/x86/boot/bzImage ../tiny_vmm/kernel.bin
 ```
 
-Optionally provide a base `initramfs.cpio` (a BusyBox one works), then:
+You can also add a base `initramfs.cpio` (a BusyBox one works). Then run:
 
 ```bash
 cargo run --release
@@ -45,4 +48,5 @@ cargo run --release
 
 ## Status
 
-A learning project. Next steps: long mode set up by the VMM, a virtio console, and more than one vCPU.
+This is a learning project. The next things I'd like to add are long mode set up by the monitor itself,
+a virtio console, and support for more than one virtual CPU.
